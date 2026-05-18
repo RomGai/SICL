@@ -24,7 +24,7 @@ The default `SyntheticICLPipeline` orchestrates the following modules:
 3. **Scenario Expansion**: proposes new visual scenarios that can still be queried with the unchanged original query.
 4. **Answer Sampling**: pre-commits known answers and visual constraints before any image is generated.
 5. **Generation Prompt Construction**: writes reference-image-conditioned generation prompts.
-6. **Image Generation**: currently a stub/placeholder. No real image generation API is called.
+6. **Image Generation**: defaults to a stub/placeholder, with an optional `qwen_edit` Diffusers backend for Qwen-Image-Edit generation.
 7. **Verification**: checks generated images against the unchanged query and known answer. In dry-run mode, this is skipped because there is no generated image.
 8. **Demonstration Selection**: ranks candidates for ICL usefulness.
 
@@ -34,8 +34,18 @@ All reasoning modules call the same `MLLMBackbone`. The only exception is `Image
 
 Python 3.10+ is recommended.
 
+Base dry-run / MLLM pipeline dependencies:
+
 ```bash
 pip install -r requirements.txt
+```
+
+Optional Qwen image-edit backend dependencies:
+
+```bash
+pip install -r requirements-qwen.txt
+# equivalent core Diffusers install:
+# pip install git+https://github.com/huggingface/diffusers
 ```
 
 ## Environment variables
@@ -56,7 +66,7 @@ Defaults:
 
 ## Running the dry-run demo
 
-The demo reads a local image, accepts the original query, constructs the pipeline, and runs with `dry_run=True`:
+The demo reads a local image, accepts the original query, constructs the pipeline, and runs with `dry_run=True` by default when `--image-generation-pipe stub` is used:
 
 ```bash
 python -m synthetic_icl.demo \
@@ -66,6 +76,22 @@ python -m synthetic_icl.demo \
   --num-answers-per-scenario 1 \
   --top-k 3
 ```
+
+## Running optional Qwen image generation
+
+To run real image generation during the image-generation stage, install the optional Qwen dependencies and pass `--image-generation-pipe qwen_edit` at the main entry point:
+
+```bash
+python -m synthetic_icl.demo \
+  --image /path/to/original.png \
+  --query "子图 A 和 B 谁更加平滑？" \
+  --image-generation-pipe qwen_edit \
+  --output-dir synthetic_outputs \
+  --num-scenarios 2 \
+  --top-k 2
+```
+
+When `--image-generation-pipe qwen_edit` is used, the demo defaults to `dry_run=False`, loads `Qwen/Qwen-Image-Edit-2511`, passes the original image as the reference image list (`image=[original_image]`), and uses each `GenerationPromptSpec.image_generation_prompt` as the Qwen prompt. Generated images are saved under `--output-dir`. You can still force prompt-only execution with `--dry-run`.
 
 It prints:
 
@@ -87,22 +113,23 @@ In dry-run mode:
 - verification returns a skipped status;
 - all metadata, answers, scenarios, and generation prompts are still returned for inspection.
 
-## Replacing the image generation stub
+## Replacing or selecting the image generation backend
 
-`synthetic_icl/modules/image_generation.py` contains:
+`synthetic_icl/modules/image_generation.py` contains both the default stub and an optional `QwenImageEditGenerationModule`. Use the factory to choose a backend programmatically:
 
 ```python
-class ImageGenerationModule:
-    def generate(self, original_image, generation_prompt_spec):
-        raise NotImplementedError("Image generation backend is not implemented yet.")
+from synthetic_icl.modules.image_generation import create_image_generation_module
+
+image_generation_module = create_image_generation_module("qwen_edit")
+pipeline = SyntheticICLPipeline(backbone, image_generation_module=image_generation_module)
 ```
 
-To connect a real backend, subclass or replace `ImageGenerationModule` with a class that accepts:
+The default stub still raises `NotImplementedError`; this keeps prompt-only development safe and makes image generation opt-in. Any replacement backend should accept:
 
 - the original reference image
 - a `GenerationPromptSpec`
 
-and returns a `PIL.Image.Image`. The rest of the pipeline does not need to change.
+and return a `PIL.Image.Image`. The rest of the pipeline does not need to change.
 
 A real backend should follow `GenerationPromptSpec.image_generation_prompt`, especially:
 
@@ -151,4 +178,5 @@ synthetic_icl/
   demo.py
 README.md
 requirements.txt
+requirements-qwen.txt
 ```

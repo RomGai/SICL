@@ -1,7 +1,12 @@
 """Pipeline modules for synthetic ICL generation."""
 
 from synthetic_icl.modules.answer_sampling import AnswerSamplingModule
-from synthetic_icl.modules.image_generation import ImageGenerationModule
+from synthetic_icl.modules.image_generation import (
+    ImageGenerationModule,
+    QwenImageEditConfig,
+    QwenImageEditGenerationModule,
+    create_image_generation_module,
+)
 from synthetic_icl.modules.prompt_construction import GenerationPromptConstructionModule
 from synthetic_icl.modules.scenario_expansion import ScenarioExpansionModule
 from synthetic_icl.modules.selection import DemonstrationSelectionModule
@@ -16,6 +21,9 @@ __all__ = [
     "AnswerSamplingModule",
     "GenerationPromptConstructionModule",
     "ImageGenerationModule",
+    "QwenImageEditConfig",
+    "QwenImageEditGenerationModule",
+    "create_image_generation_module",
     "VerificationModule",
     "DemonstrationSelectionModule",
 ]
