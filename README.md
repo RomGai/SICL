@@ -116,6 +116,7 @@ python -m synthetic_icl.demo \
 ```
 
 When `--image-generation-pipe qwen_edit` is used, the demo defaults to `dry_run=False`, loads `Qwen/Qwen-Image-Edit-2511`, passes the original image as the reference image list (`image=[original_image]`), and uses each `GenerationPromptSpec.image_generation_prompt` as the Qwen prompt. Generated images are saved under `--output-dir`. You can still force prompt-only execution with `--dry-run`.
+For iterative edit runs, the demo also saves process artifacts under `--output-dir/edit_traces/` (per-scenario image trajectory + `trace.json` with verification reasoning and per-round edit prompts). Scenarios filtered as invalid are saved under `--output-dir/invalid_scenarios/` for manual diagnosis.
 
 It prints:
 
@@ -124,6 +125,8 @@ It prints:
 - `AnswerSpecs`
 - image generation prompts
 - selected example metadata
+
+You can control how many recent edited images are fed back into verification/refinement context via `history_image_window` (CLI: `--history-image-window`, default `3`).
 
 ## Dry-run mode
 

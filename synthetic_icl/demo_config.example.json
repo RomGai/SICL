@@ -10,6 +10,7 @@
     "num_scenarios": 5,
     "num_answers_per_scenario": 1,
     "top_k": 3,
+    "history_image_window": 3,
     "image_generation_pipe": "qwen_edit",
     "dry_run": false,
     "output_dir": "synthetic_outputs",
