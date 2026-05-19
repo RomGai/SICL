@@ -47,6 +47,7 @@ class SyntheticICLPipeline:
         self.verification_module = verification_module or VerificationModule(backbone)
         self.selection_module = selection_module or DemonstrationSelectionModule(backbone)
         self.last_candidates: list[SyntheticExample] = []
+        self.last_run_log: dict[str, Any] = {}
 
     @staticmethod
     def _preview(payload: Any, max_chars: int = 1200) -> str:
@@ -88,6 +89,17 @@ class SyntheticICLPipeline:
         if not original_query:
             raise ValueError("original_query must be a non-empty string.")
 
+        run_log: dict[str, Any] = {
+            "run_config": {
+                "original_query": original_query,
+                "num_scenarios": num_scenarios,
+                "num_answers_per_scenario": num_answers_per_scenario,
+                "top_k": top_k,
+                "dry_run": dry_run,
+                "verbose": verbose,
+            }
+        }
+
         self._log(
             verbose,
             "start",
@@ -102,29 +114,34 @@ class SyntheticICLPipeline:
         )
 
         understanding = self.image_understanding_module.run(original_image, original_query)
+        run_log["understanding"] = understanding
         self._log(verbose, "understanding", "Image-query understanding completed.", understanding)
 
         task_ir = self.task_induction_module.run(original_query, understanding)
+        run_log["task_ir"] = task_ir.to_dict()
         self._log(verbose, "task_induction", "Task induction completed.", task_ir.to_dict())
 
         scenarios = self.scenario_expansion_module.run(task_ir, num_scenarios)
+        run_log["scenarios"] = [scenario.to_dict() for scenario in scenarios]
         self._log(
             verbose,
             "scenario_expansion",
             f"Scenario expansion completed with {len(scenarios)} scenarios.",
-            [scenario.to_dict() for scenario in scenarios],
+            run_log["scenarios"],
         )
 
         answer_specs = self.answer_sampling_module.run(task_ir, scenarios, num_answers_per_scenario)
+        run_log["answer_specs"] = [answer_spec.to_dict() for answer_spec in answer_specs]
         self._log(
             verbose,
             "answer_sampling",
             f"Answer sampling completed with {len(answer_specs)} answer specs.",
-            [answer_spec.to_dict() for answer_spec in answer_specs],
+            run_log["answer_specs"],
         )
 
         scenarios_by_id = {scenario.scenario_id: scenario for scenario in scenarios}
         candidates: list[SyntheticExample] = []
+        candidate_logs: list[dict[str, Any]] = []
 
         for idx, answer_spec in enumerate(answer_specs, start=1):
             self._log(
@@ -141,6 +158,7 @@ class SyntheticICLPipeline:
                     "Skipped candidate because scenario_id was not found in expanded scenarios.",
                     {"scenario_id": answer_spec.scenario_id},
                 )
+                candidate_logs.append({"scenario_id": answer_spec.scenario_id, "status": "skipped_missing_scenario"})
                 continue
             generation_prompt_spec = self.prompt_construction_module.run(
                 original_image=original_image,
@@ -156,15 +174,24 @@ class SyntheticICLPipeline:
                 generation_prompt_spec.to_dict(),
             )
 
+            candidate_log: dict[str, Any] = {
+                "scenario_id": scenario.scenario_id,
+                "answer_spec": answer_spec.to_dict(),
+                "generation_prompt": generation_prompt_spec.to_dict(),
+            }
+
             if dry_run:
                 synthetic_image = None
+                candidate_log["image_generation"] = {"status": "skipped_dry_run"}
                 self._log(verbose, "image_generation", "Skipped image generation because dry_run=True.")
             else:
                 try:
                     synthetic_image = self.image_generation_module.generate(original_image, generation_prompt_spec)
+                    candidate_log["image_generation"] = {"status": "completed", "has_image": synthetic_image is not None}
                     self._log(verbose, "image_generation", "Image generation completed for candidate.")
                 except NotImplementedError:
                     synthetic_image = None
+                    candidate_log["image_generation"] = {"status": "not_implemented"}
                     self._log(
                         verbose,
                         "image_generation",
@@ -185,6 +212,7 @@ class SyntheticICLPipeline:
                 f"Verification completed for scenario_id={scenario.scenario_id}.",
                 verification_result,
             )
+            candidate_log["verification_result"] = verification_result
 
             candidates.append(
                 SyntheticExample(
@@ -199,14 +227,18 @@ class SyntheticICLPipeline:
                     selected=False,
                 )
             )
+            candidate_logs.append(candidate_log)
 
         self.last_candidates = candidates
+        run_log["candidate_logs"] = candidate_logs
         self._log(verbose, "selection", f"Selecting top_k={top_k} from {len(candidates)} candidates.")
         selected_examples = self.selection_module.run(candidates, top_k)
+        run_log["selected_examples"] = [example.to_metadata_dict() for example in selected_examples]
         self._log(
             verbose,
             "done",
             f"Selection completed with {len(selected_examples)} selected examples.",
-            [example.to_metadata_dict() for example in selected_examples],
+            run_log["selected_examples"],
         )
+        self.last_run_log = run_log
         return selected_examples

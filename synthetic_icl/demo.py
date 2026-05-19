@@ -30,6 +30,13 @@ def _save_generated_images(examples: list[SyntheticExample], output_dir: Path) -
         example.verification_result.setdefault("saved_image_path", str(image_path.resolve()))
 
 
+
+
+def _save_json_log(log_payload: dict[str, Any], log_path: Path) -> None:
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("w", encoding="utf-8") as fp:
+        json.dump(log_payload, fp, ensure_ascii=False, indent=2)
+
 def _load_config(config_path: str | None) -> dict[str, Any]:
     if not config_path:
         return {}
@@ -70,6 +77,7 @@ def main() -> None:
         ),
     )
     parser.add_argument("--output-dir", help="Directory for generated images.")
+    parser.add_argument("--log-json-path", help="Path to save detailed intermediate pipeline log JSON.")
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=None, help="Print pipeline stage progress and intermediate results.")
     parser.add_argument("--mllm-api-key", help="Override MLLM API key (or set in config/env).")
     parser.add_argument("--mllm-base-url", help="Override MLLM base URL (or set in config/env).")
@@ -87,6 +95,7 @@ def main() -> None:
     top_k = int(_coalesce(args.top_k, run_cfg, "top_k") or 3)
     image_generation_pipe = _coalesce(args.image_generation_pipe, run_cfg, "image_generation_pipe") or "stub"
     output_dir = _coalesce(args.output_dir, run_cfg, "output_dir") or "synthetic_outputs"
+    log_json_path = _coalesce(args.log_json_path, run_cfg, "log_json_path")
     verbose = bool(_coalesce(args.verbose, run_cfg, "verbose") if _coalesce(args.verbose, run_cfg, "verbose") is not None else False)
 
     if not image:
@@ -132,6 +141,9 @@ def main() -> None:
 
     if not dry_run:
         _save_generated_images(pipeline.last_candidates, Path(output_dir))
+
+    if log_json_path:
+        _save_json_log(pipeline.last_run_log, Path(log_json_path))
 
     if selected_examples:
         _print_json("TaskIR", selected_examples[0].task_ir.to_dict())

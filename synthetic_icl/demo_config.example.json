@@ -5,14 +5,15 @@
     "model_name": "gemini-3-flash-preview-thinking"
   },
   "run": {
-    "image": "synthetic_icl/images/1.png",
-    "query": "What is the name of the subplot with a smoother transition on the surface from highest to lowest values?",
+    "image": "/path/to/original.png",
+    "query": "子图 A 和 B 谁更加平滑？",
     "num_scenarios": 5,
     "num_answers_per_scenario": 1,
-    "top_k": 5,
+    "top_k": 3,
     "image_generation_pipe": "qwen_edit",
     "dry_run": false,
     "output_dir": "synthetic_outputs",
-    "verbose": true
+    "verbose": true,
+    "log_json_path": "synthetic_outputs/pipeline_log.json"
   }
 }

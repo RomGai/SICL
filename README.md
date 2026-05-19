@@ -56,6 +56,8 @@ You can run the demo without `export` by using a single JSON config file. See `s
 python -m synthetic_icl.demo --config synthetic_icl/demo_config.example.json
 ```
 
+If `run.log_json_path` (or `--log-json-path`) is set, the demo will save detailed intermediate outputs from each pipeline stage to a JSON file for diagnosis.
+
 Config schema:
 
 - `mllm.api_key`
@@ -70,6 +72,7 @@ Config schema:
 - `run.dry_run`
 - `run.output_dir`
 - `run.verbose`
+- `run.log_json_path`
 
 CLI flags still work and can override values in the config file.
 
