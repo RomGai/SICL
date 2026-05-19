@@ -52,6 +52,7 @@ class SyntheticICLPipeline:
         self.refinement_prompt_module = refinement_prompt_module or ImageRefinementPromptModule(backbone)
         self.last_candidates: list[SyntheticExample] = []
         self.last_run_log: dict[str, Any] = {}
+        self.last_attempt_traces: list[dict[str, Any]] = []
 
     @staticmethod
     def _preview(payload: Any, max_chars: int = 1200) -> str:
@@ -201,6 +202,7 @@ class SyntheticICLPipeline:
         scenarios_by_id = {scenario.scenario_id: scenario for scenario in scenarios}
         candidates: list[SyntheticExample] = []
         candidate_logs: list[dict[str, Any]] = []
+        attempt_traces: list[dict[str, Any]] = []
 
         for idx, answer_spec in enumerate(answer_specs, start=1):
             self._log(
@@ -238,6 +240,11 @@ class SyntheticICLPipeline:
                 "answer_spec": answer_spec.to_dict(),
                 "generation_prompt": generation_prompt_spec.to_dict(),
             }
+            attempt_trace: dict[str, Any] = {
+                "scenario_id": scenario.scenario_id,
+                "answer_spec": answer_spec.to_dict(),
+                "attempts": [],
+            }
 
             attempt_candidates: list[dict[str, Any]] = []
             selected_attempt: dict[str, Any] | None = None
@@ -261,7 +268,8 @@ class SyntheticICLPipeline:
                     gen_status = {"status": "skipped_dry_run", "regen_try": regen_idx + 1}
                 else:
                     try:
-                        self._maybe_randomize_generation_seed()
+                        if regen_idx > 0:
+                            self._maybe_randomize_generation_seed()
                         synthetic_image = self.image_generation_module.generate(original_image, generation_prompt_spec)
                         gen_status = {"status": "completed", "has_image": synthetic_image is not None, "regen_try": regen_idx + 1}
                     except NotImplementedError:
@@ -284,9 +292,19 @@ class SyntheticICLPipeline:
                     "verification_result": verification_result,
                     "stage": "generation",
                     "regen_try": regen_idx + 1,
+                    "prompt_spec": generation_prompt_spec,
                 }
                 attempt_candidates.append(attempt)
                 candidate_log["regen_iterations"].append({"generation": gen_status, "verification": verification_result})
+                attempt_trace["attempts"].append(
+                    {
+                        "stage": "generation",
+                        "regen_try": regen_idx + 1,
+                        "prompt_spec": generation_prompt_spec.to_dict(),
+                        "verification": verification_result,
+                        "image": synthetic_image,
+                    }
+                )
 
                 action = str(verification_result.get("recommended_action", "")).lower().strip()
                 if action == "accept" or self._is_sufficiently_good(verification_result):
@@ -308,6 +326,8 @@ class SyntheticICLPipeline:
                     # regen failed; skip this scenario/case to avoid noisy examples.
                     candidate_log["status"] = "skipped_regen_exhausted"
                     candidate_logs.append(candidate_log)
+                    attempt_trace["status"] = "skipped_regen_exhausted"
+                    attempt_traces.append(attempt_trace)
                     continue
 
             current_image = selected_attempt["image"]
@@ -361,10 +381,21 @@ class SyntheticICLPipeline:
                         "verification_result": edited_verification,
                         "stage": "edit",
                         "edit_try": edit_idx + 1,
+                        "prompt_spec": edit_prompt_spec,
                     }
                     attempt_candidates.append(edit_attempt)
                     candidate_log["edit_iterations"].append(
                         {"edit_try": edit_idx + 1, "edit_prompt": edit_prompt, "verification": edited_verification}
+                    )
+                    attempt_trace["attempts"].append(
+                        {
+                            "stage": "edit",
+                            "edit_try": edit_idx + 1,
+                            "edit_prompt": edit_prompt,
+                            "prompt_spec": edit_prompt_spec.to_dict(),
+                            "verification": edited_verification,
+                            "image": edited_image,
+                        }
                     )
                     current_image = edited_image
                     current_verification = edited_verification
@@ -377,6 +408,8 @@ class SyntheticICLPipeline:
                 if selected_attempt is None:
                     candidate_log["status"] = "skipped_no_valid_attempt"
                     candidate_logs.append(candidate_log)
+                    attempt_trace["status"] = "skipped_no_valid_attempt"
+                    attempt_traces.append(attempt_trace)
                     continue
 
             if selected_attempt is None:
@@ -392,14 +425,19 @@ class SyntheticICLPipeline:
                     task_ir=task_ir,
                     scenario=scenario,
                     answer_spec=answer_spec,
-                    generation_prompt=generation_prompt_spec,
+                    generation_prompt=selected_attempt.get("prompt_spec", generation_prompt_spec),
                     verification_result=verification_result,
                     selected=False,
                 )
             )
+            attempt_trace["status"] = "completed"
+            attempt_trace["selected_stage"] = selected_attempt.get("stage")
+            attempt_trace["selected_try"] = selected_attempt.get("regen_try", selected_attempt.get("edit_try"))
+            attempt_traces.append(attempt_trace)
             candidate_logs.append(candidate_log)
 
         self.last_candidates = candidates
+        self.last_attempt_traces = attempt_traces
         run_log["candidate_logs"] = candidate_logs
         self._log(verbose, "selection", f"Selecting top_k={top_k} from {len(candidates)} candidates.")
         selected_examples = self.selection_module.run(candidates, top_k)

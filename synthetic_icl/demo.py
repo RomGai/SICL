@@ -30,6 +30,48 @@ def _save_generated_images(examples: list[SyntheticExample], output_dir: Path) -
         example.verification_result.setdefault("saved_image_path", str(image_path.resolve()))
 
 
+def _save_attempt_artifacts(attempt_traces: list[dict[str, Any]], output_dir: Path) -> None:
+    trace_root = output_dir / "edit_traces"
+    invalid_root = output_dir / "invalid_scenarios"
+    trace_root.mkdir(parents=True, exist_ok=True)
+    invalid_root.mkdir(parents=True, exist_ok=True)
+    for idx, trace in enumerate(attempt_traces):
+        scenario_id = trace.get("scenario_id") or f"scenario_{idx:03d}"
+        attempts = trace.get("attempts", [])
+        status = str(trace.get("status", ""))
+        target_root = invalid_root if status.startswith("skipped") else trace_root
+        scenario_dir = target_root / f"{idx:03d}_{scenario_id}"
+        scenario_dir.mkdir(parents=True, exist_ok=True)
+        for attempt_idx, attempt in enumerate(attempts):
+            image = attempt.get("image")
+            if image is not None:
+                stage = attempt.get("stage", "attempt")
+                try_idx = attempt.get("regen_try", attempt.get("edit_try", attempt_idx + 1))
+                image.save(scenario_dir / f"{attempt_idx:03d}_{stage}_{try_idx}.png")
+        trace_payload = []
+        for attempt in attempts:
+            trace_payload.append(
+                {
+                    "stage": attempt.get("stage"),
+                    "regen_try": attempt.get("regen_try"),
+                    "edit_try": attempt.get("edit_try"),
+                    "edit_prompt": attempt.get("edit_prompt"),
+                    "prompt_spec": attempt.get("prompt_spec"),
+                    "verification": attempt.get("verification"),
+                    "has_image": attempt.get("image") is not None,
+                }
+            )
+        _save_json_log(
+            {
+                "scenario_id": scenario_id,
+                "status": status,
+                "selected_stage": trace.get("selected_stage"),
+                "selected_try": trace.get("selected_try"),
+                "attempts": trace_payload,
+            },
+            scenario_dir / "trace.json",
+        )
+
 
 
 def _save_json_log(log_payload: dict[str, Any], log_path: Path) -> None:
@@ -145,6 +187,7 @@ def main() -> None:
 
     if not dry_run:
         _save_generated_images(pipeline.last_candidates, Path(output_dir))
+        _save_attempt_artifacts(pipeline.last_attempt_traces, Path(output_dir))
 
     if log_json_path:
         _save_json_log(pipeline.last_run_log, Path(log_json_path))
