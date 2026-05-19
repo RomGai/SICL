@@ -71,6 +71,10 @@ class SyntheticICLPipeline:
         if payload is not None:
             print(SyntheticICLPipeline._preview(payload))
 
+    def _maybe_randomize_generation_seed(self) -> None:
+        if hasattr(self.image_generation_module, "config") and hasattr(self.image_generation_module.config, "seed"):
+            self.image_generation_module.config.seed = random.randint(0, 2**31 - 1)
+
     @staticmethod
     def _is_sufficiently_good(verification_result: dict[str, Any]) -> bool:
         if bool(verification_result.get("is_good_enough")):
@@ -257,10 +261,7 @@ class SyntheticICLPipeline:
                     gen_status = {"status": "skipped_dry_run", "regen_try": regen_idx + 1}
                 else:
                     try:
-                        if hasattr(self.image_generation_module, "config") and hasattr(
-                            self.image_generation_module.config, "seed"
-                        ):
-                            self.image_generation_module.config.seed = random.randint(0, 2**31 - 1)
+                        self._maybe_randomize_generation_seed()
                         synthetic_image = self.image_generation_module.generate(original_image, generation_prompt_spec)
                         gen_status = {"status": "completed", "has_image": synthetic_image is not None, "regen_try": regen_idx + 1}
                     except NotImplementedError:
@@ -342,6 +343,7 @@ class SyntheticICLPipeline:
                         must_include=generation_prompt_spec.must_include,
                         must_avoid=generation_prompt_spec.must_avoid,
                     )
+                    self._maybe_randomize_generation_seed()
                     edited_image = self.image_generation_module.generate(current_image, edit_prompt_spec)
                     history_context = [self._history_item(item) for item in attempt_candidates]
                     edited_verification = self.verification_module.run(
