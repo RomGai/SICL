@@ -92,6 +92,19 @@ class SyntheticICLPipeline:
         if not attempt_candidates:
             return None
 
+        eligible_attempts: list[dict[str, Any]] = []
+        for item in attempt_candidates:
+            result = item.get("verification_result", {})
+            action = str(result.get("recommended_action", "")).lower().strip()
+            if not bool(result.get("is_valid_demo")):
+                continue
+            if action == "regenerate":
+                continue
+            eligible_attempts.append(item)
+
+        if not eligible_attempts:
+            return None
+
         def score(item: dict[str, Any]) -> tuple[int, float]:
             result = item.get("verification_result", {})
             passed = 1 if bool(result.get("pass")) else 0
@@ -99,7 +112,7 @@ class SyntheticICLPipeline:
             ambiguity_value = float(ambiguity) if isinstance(ambiguity, (int, float)) else 1.0
             return (passed, -ambiguity_value)
 
-        return max(attempt_candidates, key=score)
+        return max(eligible_attempts, key=score)
 
     @staticmethod
     def _history_item(attempt: dict[str, Any]) -> dict[str, Any]:
