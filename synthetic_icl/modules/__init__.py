@@ -8,6 +8,7 @@ from synthetic_icl.modules.image_generation import (
     create_image_generation_module,
 )
 from synthetic_icl.modules.prompt_construction import GenerationPromptConstructionModule
+from synthetic_icl.modules.refinement import ImageRefinementPromptModule
 from synthetic_icl.modules.scenario_expansion import ScenarioExpansionModule
 from synthetic_icl.modules.selection import DemonstrationSelectionModule
 from synthetic_icl.modules.task_induction import TaskInductionModule
@@ -26,4 +27,5 @@ __all__ = [
     "create_image_generation_module",
     "VerificationModule",
     "DemonstrationSelectionModule",
+    "ImageRefinementPromptModule",
 ]
