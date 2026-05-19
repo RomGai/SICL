@@ -28,9 +28,10 @@ Hard constraints:
 - The query for every future demonstration MUST be exactly: {json.dumps(task_ir.original_query, ensure_ascii=False)}
 - Do NOT create, suggest, or include any new question text.
 - Scenarios should not target or copy the original image's concrete content.
-- Scenarios may change domain/content/layout, but must preserve the same answerable task structure.
+- Scenarios may vary in content/layout, but should remain semantically close to the original task domain and preserve the same answerable task structure.
 - Each scenario must be directly answerable by the unchanged original_query.
-- Cover diverse visual domains and difficulty levels.
+- Prefer domain-near variations: diversify within related visual domains instead of jumping to unrelated domains.
+- Cover diverse but related visual domains and difficulty levels.
 
 Return ONLY a strict JSON array. Each object schema:
 {{
