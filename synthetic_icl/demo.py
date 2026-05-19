@@ -94,7 +94,8 @@ def main() -> None:
     num_scenarios = int(_coalesce(args.num_scenarios, run_cfg, "num_scenarios") or 5)
     num_answers_per_scenario = int(_coalesce(args.num_answers_per_scenario, run_cfg, "num_answers_per_scenario") or 1)
     top_k = int(_coalesce(args.top_k, run_cfg, "top_k") or 3)
-    history_image_window = int(_coalesce(args.history_image_window, run_cfg, "history_image_window") or 3)
+    history_image_window_raw = _coalesce(args.history_image_window, run_cfg, "history_image_window")
+    history_image_window = int(history_image_window_raw) if history_image_window_raw is not None else 3
     image_generation_pipe = _coalesce(args.image_generation_pipe, run_cfg, "image_generation_pipe") or "stub"
     output_dir = _coalesce(args.output_dir, run_cfg, "output_dir") or "synthetic_outputs"
     log_json_path = _coalesce(args.log_json_path, run_cfg, "log_json_path")

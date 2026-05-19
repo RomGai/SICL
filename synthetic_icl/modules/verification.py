@@ -68,6 +68,9 @@ AnswerSpec:
 Compact attempt history (latest few; use as context, avoid repeating failed edits):
 {json.dumps((attempt_history or [])[-3:], ensure_ascii=False, indent=2)}
 
+If multiple images are attached, treat them as an ordered sequence of prior attempts followed by the CURRENT candidate.
+You must score only the LAST attached image as the candidate under evaluation; earlier images are historical context only.
+
 Return ONLY strict JSON:
 {{
   "status": "completed",
