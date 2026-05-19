@@ -95,6 +95,26 @@ class SyntheticICLPipeline:
 
         return max(attempt_candidates, key=score)
 
+    @staticmethod
+    def _history_item(attempt: dict[str, Any]) -> dict[str, Any]:
+        result = attempt.get("verification_result", {})
+        history: dict[str, Any] = {
+            "stage": attempt.get("stage"),
+            "recommended_action": result.get("recommended_action"),
+            "is_good_enough": result.get("is_good_enough"),
+            "is_valid_demo": result.get("is_valid_demo"),
+            "failure_type": result.get("failure_type"),
+            "ambiguity_score": result.get("ambiguity_score"),
+            "issues": result.get("issues", [])[:3],
+            "reason": result.get("reason", ""),
+            "edit_targets": result.get("edit_targets", [])[:5],
+        }
+        if "regen_try" in attempt:
+            history["regen_try"] = attempt.get("regen_try")
+        if "edit_try" in attempt:
+            history["edit_try"] = attempt.get("edit_try")
+        return history
+
     def run(
         self,
         original_image: Image.Image,
@@ -106,6 +126,7 @@ class SyntheticICLPipeline:
         verbose: bool = False,
         max_regen_try: int = 3,
         max_edit_try: int = 3,
+        history_image_window: int = 3,
     ) -> list[SyntheticExample]:
         """Run the full pipeline and return selected synthetic examples.
 
@@ -129,6 +150,7 @@ class SyntheticICLPipeline:
                 "verbose": verbose,
                 "max_regen_try": max_regen_try,
                 "max_edit_try": max_edit_try,
+                "history_image_window": history_image_window,
             }
         }
 
@@ -217,6 +239,12 @@ class SyntheticICLPipeline:
             candidate_log["regen_iterations"] = []
             candidate_log["edit_iterations"] = []
 
+            def recent_history_images(max_images: int = history_image_window) -> list[Image.Image]:
+                imgs = [item.get("image") for item in attempt_candidates if item.get("image") is not None]
+                if max_images <= 0:
+                    return []
+                return imgs[-max_images:]
+
             regen_tries = 1 if dry_run else max_regen_try
             for regen_idx in range(regen_tries):
                 if dry_run:
@@ -230,6 +258,7 @@ class SyntheticICLPipeline:
                         synthetic_image = None
                         gen_status = {"status": "not_implemented", "regen_try": regen_idx + 1}
 
+                history_context = [self._history_item(item) for item in attempt_candidates]
                 verification_result = self.verification_module.run(
                     synthetic_image=synthetic_image,
                     original_query=original_query,
@@ -237,6 +266,8 @@ class SyntheticICLPipeline:
                     task_ir=task_ir,
                     scenario=scenario,
                     answer_spec=answer_spec,
+                    attempt_history=history_context,
+                    history_images=recent_history_images(),
                 )
                 attempt = {
                     "image": synthetic_image,
@@ -259,10 +290,15 @@ class SyntheticICLPipeline:
                     break
 
             if selected_attempt is None:
-                # regen failed; skip this scenario/case to avoid noisy examples.
-                candidate_log["status"] = "skipped_regen_exhausted"
-                candidate_logs.append(candidate_log)
-                continue
+                if dry_run and attempt_candidates:
+                    # In dry-run, keep prompt-only candidates for inspection even without images.
+                    selected_attempt = attempt_candidates[-1]
+                    candidate_log["status"] = "selected_dry_run_prompt_only"
+                else:
+                    # regen failed; skip this scenario/case to avoid noisy examples.
+                    candidate_log["status"] = "skipped_regen_exhausted"
+                    candidate_logs.append(candidate_log)
+                    continue
 
             current_image = selected_attempt["image"]
             current_verification = selected_attempt["verification_result"]
@@ -275,6 +311,7 @@ class SyntheticICLPipeline:
                 and not self._is_sufficiently_good(current_verification)
             ):
                 for edit_idx in range(max_edit_try):
+                    history_context = [self._history_item(item) for item in attempt_candidates]
                     edit_prompt = self.refinement_prompt_module.run(
                         original_image=original_image,
                         synthetic_image=current_image,
@@ -284,6 +321,8 @@ class SyntheticICLPipeline:
                         answer_spec=answer_spec,
                         base_prompt_spec=generation_prompt_spec,
                         verification_result=current_verification,
+                        attempt_history=history_context,
+                        history_images=recent_history_images(),
                     )
                     edit_prompt_spec = generation_prompt_spec.__class__(
                         scenario_id=generation_prompt_spec.scenario_id,
@@ -295,6 +334,7 @@ class SyntheticICLPipeline:
                         must_avoid=generation_prompt_spec.must_avoid,
                     )
                     edited_image = self.image_generation_module.generate(current_image, edit_prompt_spec)
+                    history_context = [self._history_item(item) for item in attempt_candidates]
                     edited_verification = self.verification_module.run(
                         synthetic_image=edited_image,
                         original_query=original_query,
@@ -302,6 +342,8 @@ class SyntheticICLPipeline:
                         task_ir=task_ir,
                         scenario=scenario,
                         answer_spec=answer_spec,
+                        attempt_history=history_context,
+                        history_images=recent_history_images(),
                     )
                     edit_attempt = {
                         "image": edited_image,

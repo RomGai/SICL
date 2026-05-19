@@ -29,6 +29,8 @@ class ImageRefinementPromptModule:
         answer_spec: AnswerSpec,
         base_prompt_spec: GenerationPromptSpec,
         verification_result: dict,
+        attempt_history: list[dict] | None = None,
+        history_images: list[Image.Image] | None = None,
     ) -> str:
         prompt = f"""
 You are improving a synthetic multimodal ICL sample via image editing.
@@ -51,7 +53,13 @@ Current generation prompt:
 Verification result of current synthetic image:
 {json.dumps(verification_result, ensure_ascii=False, indent=2)}
 
-Given image A=original reference image and image B=current synthetic image, output an image-edit prompt that:
+Compact edit history summary (latest few; do not repeat ineffective edits):
+{json.dumps((attempt_history or [])[-3:], ensure_ascii=False, indent=2)}
+
+You are given an ordered image sequence: image A is original reference, middle images are prior attempts, and final image is current synthetic image to edit.
+Infer trajectory of what changed across attempts and avoid repeating ineffective edits.
+
+Output an image-edit prompt that:
 - keeps B answerable by the exact query,
 - preserves known answer={json.dumps(answer_spec.answer, ensure_ascii=False)},
 - fixes verification issues,
@@ -63,7 +71,12 @@ Return ONLY strict JSON:
   "focus_changes": [string]
 }}
 """.strip()
-        raw = self.backbone.generate_response_multimodal_multi([original_image, synthetic_image], prompt)
+        images = [original_image]
+        for img in history_images or []:
+            if img is not None:
+                images.append(img)
+        images.append(synthetic_image)
+        raw = self.backbone.generate_response_multimodal_multi(images, prompt)
         parsed = robust_json_parse(raw)
         if not isinstance(parsed, dict):
             raise ValueError("ImageRefinementPromptModule expected JSON object.")

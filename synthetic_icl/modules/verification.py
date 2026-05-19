@@ -27,6 +27,8 @@ class VerificationModule:
         task_ir: TaskIR,
         scenario: ScenarioSpec,
         answer_spec: AnswerSpec,
+        attempt_history: list[dict[str, Any]] | None = None,
+        history_images: list[Image.Image] | None = None,
     ) -> dict[str, Any]:
         if synthetic_image is None:
             return {
@@ -63,6 +65,12 @@ ScenarioSpec:
 AnswerSpec:
 {json.dumps(answer_spec.to_dict(), ensure_ascii=False, indent=2)}
 
+Compact attempt history (latest few; use as context, avoid repeating failed edits):
+{json.dumps((attempt_history or [])[-3:], ensure_ascii=False, indent=2)}
+
+If multiple images are attached, treat them as an ordered sequence of prior attempts followed by the CURRENT candidate.
+You must score only the LAST attached image as the candidate under evaluation; earlier images are historical context only.
+
 Return ONLY strict JSON:
 {{
   "status": "completed",
@@ -87,7 +95,12 @@ Decision policy:
 - is_valid_demo should indicate whether this image can be kept as a usable demonstration at all.
 - is_good_enough should be true only when no further editing is needed.
 """.strip()
-        raw = self.backbone.generate_response_multimodal_single(synthetic_image, prompt)
+        images = [img for img in (history_images or []) if img is not None]
+        images.append(synthetic_image)
+        if len(images) >= 2:
+            raw = self.backbone.generate_response_multimodal_multi(images, prompt)
+        else:
+            raw = self.backbone.generate_response_multimodal_single(synthetic_image, prompt)
         parsed = robust_json_parse(raw)
         if not isinstance(parsed, dict):
             raise ValueError("VerificationModule expected a JSON object.")
