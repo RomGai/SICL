@@ -64,6 +64,7 @@ def main() -> None:
     parser.add_argument("--qwen-true-cfg-scale", type=float, default=4.0, help="true_cfg_scale for qwen_edit.")
     parser.add_argument("--qwen-guidance-scale", type=float, default=1.0, help="guidance_scale for qwen_edit.")
     parser.add_argument("--qwen-negative-prompt", default=" ", help="Negative prompt for qwen_edit.")
+    parser.add_argument("--verbose", action="store_true", help="Print pipeline stage progress and intermediate results.")
     args = parser.parse_args()
 
     import importlib.util
@@ -104,6 +105,7 @@ def main() -> None:
         num_answers_per_scenario=args.num_answers_per_scenario,
         top_k=args.top_k,
         dry_run=dry_run,
+        verbose=args.verbose,
     )
 
     if not dry_run:
