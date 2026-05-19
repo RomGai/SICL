@@ -1,0 +1,4 @@
+-r requirements.txt
+torch
+# QwenImageEditPlusPipeline currently requires the latest Diffusers from GitHub.
+git+https://github.com/huggingface/diffusers
