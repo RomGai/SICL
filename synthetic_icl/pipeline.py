@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import random
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -239,8 +240,12 @@ class SyntheticICLPipeline:
             candidate_log["regen_iterations"] = []
             candidate_log["edit_iterations"] = []
 
-            def recent_history_images(max_images: int = history_image_window) -> list[Image.Image]:
+            def recent_history_images(
+                max_images: int = history_image_window, *, include_current: bool = True
+            ) -> list[Image.Image]:
                 imgs = [item.get("image") for item in attempt_candidates if item.get("image") is not None]
+                if not include_current and imgs:
+                    imgs = imgs[:-1]
                 if max_images <= 0:
                     return []
                 return imgs[-max_images:]
@@ -252,6 +257,10 @@ class SyntheticICLPipeline:
                     gen_status = {"status": "skipped_dry_run", "regen_try": regen_idx + 1}
                 else:
                     try:
+                        if hasattr(self.image_generation_module, "config") and hasattr(
+                            self.image_generation_module.config, "seed"
+                        ):
+                            self.image_generation_module.config.seed = random.randint(0, 2**31 - 1)
                         synthetic_image = self.image_generation_module.generate(original_image, generation_prompt_spec)
                         gen_status = {"status": "completed", "has_image": synthetic_image is not None, "regen_try": regen_idx + 1}
                     except NotImplementedError:
@@ -322,7 +331,7 @@ class SyntheticICLPipeline:
                         base_prompt_spec=generation_prompt_spec,
                         verification_result=current_verification,
                         attempt_history=history_context,
-                        history_images=recent_history_images(),
+                        history_images=recent_history_images(include_current=False),
                     )
                     edit_prompt_spec = generation_prompt_spec.__class__(
                         scenario_id=generation_prompt_spec.scenario_id,
