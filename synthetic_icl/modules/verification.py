@@ -14,7 +14,7 @@ from synthetic_icl.schemas import AnswerSpec, ScenarioSpec, TaskIR
 
 
 class VerificationModule:
-    """Verify generated images against the unchanged query and known answer."""
+    """Verify generated images and provide control-flow decisions."""
 
     def __init__(self, backbone: MLLMBackbone) -> None:
         self.backbone = backbone
@@ -27,6 +27,8 @@ class VerificationModule:
         task_ir: TaskIR,
         scenario: ScenarioSpec,
         answer_spec: AnswerSpec,
+        attempt_history: list[dict[str, Any]] | None = None,
+        history_images: list[Image.Image] | None = None,
     ) -> dict[str, Any]:
         if synthetic_image is None:
             return {
@@ -37,6 +39,12 @@ class VerificationModule:
                 "ambiguity_score": None,
                 "issues": ["synthetic_image is None; dry_run or image generation stub was used."],
                 "reason": "Verification skipped because no synthetic image is available.",
+                "is_valid_demo": False,
+                "is_good_enough": False,
+                "failure_type": "image_unavailable",
+                "recommended_action": "regenerate",
+                "confidence": 0.0,
+                "edit_targets": [],
             }
 
         prompt = f"""
@@ -57,13 +65,11 @@ ScenarioSpec:
 AnswerSpec:
 {json.dumps(answer_spec.to_dict(), ensure_ascii=False, indent=2)}
 
-Check:
-- Can the exact original_query be answered from this image without rewriting the query?
-- What answer does the image support?
-- Does it match the known planned answer?
-- Is there ambiguity or missing visual evidence?
-- Are required labels/entities/attributes/relations visible?
-- Does the image appear to copy the original image's concrete content instead of only task-related style/layout?
+Compact attempt history (latest few; use as context, avoid repeating failed edits):
+{json.dumps((attempt_history or [])[-3:], ensure_ascii=False, indent=2)}
+
+If multiple images are attached, treat them as an ordered sequence of prior attempts followed by the CURRENT candidate.
+You must score only the LAST attached image as the candidate under evaluation; earlier images are historical context only.
 
 Return ONLY strict JSON:
 {{
@@ -73,12 +79,36 @@ Return ONLY strict JSON:
   "matches_known_answer": true,
   "ambiguity_score": 0.0,
   "issues": [string],
-  "reason": string
+  "reason": string,
+  "is_valid_demo": true,
+  "is_good_enough": false,
+  "failure_type": "none",
+  "recommended_action": "accept",
+  "confidence": 0.9,
+  "edit_targets": [string]
 }}
+
+Decision policy:
+- recommended_action="regenerate" when answer mismatch / missing critical evidence / severe ambiguity makes this candidate unusable.
+- recommended_action="edit" when candidate is valid but needs style/layout/entity detail correction.
+- recommended_action="accept" when it is already good enough as an ICL demonstration.
+- is_valid_demo should indicate whether this image can be kept as a usable demonstration at all.
+- is_good_enough should be true only when no further editing is needed.
 """.strip()
-        raw = self.backbone.generate_response_multimodal_single(synthetic_image, prompt)
+        images = [img for img in (history_images or []) if img is not None]
+        images.append(synthetic_image)
+        if len(images) >= 2:
+            raw = self.backbone.generate_response_multimodal_multi(images, prompt)
+        else:
+            raw = self.backbone.generate_response_multimodal_single(synthetic_image, prompt)
         parsed = robust_json_parse(raw)
         if not isinstance(parsed, dict):
             raise ValueError("VerificationModule expected a JSON object.")
         parsed.setdefault("status", "completed")
+        parsed.setdefault("is_valid_demo", bool(parsed.get("pass")))
+        parsed.setdefault("is_good_enough", bool(parsed.get("pass")))
+        parsed.setdefault("failure_type", "none" if bool(parsed.get("pass")) else "other")
+        parsed.setdefault("recommended_action", "accept" if bool(parsed.get("pass")) else "regenerate")
+        parsed.setdefault("confidence", 0.5)
+        parsed.setdefault("edit_targets", [])
         return parsed

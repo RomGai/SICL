@@ -125,6 +125,8 @@ It prints:
 - image generation prompts
 - selected example metadata
 
+You can control how many recent edited images are fed back into verification/refinement context via `history_image_window` (CLI: `--history-image-window`, default `3`).
+
 ## Dry-run mode
 
 `dry_run=True` is the recommended first step while developing prompts and task schemas.
