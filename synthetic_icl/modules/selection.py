@@ -64,10 +64,24 @@ Return ONLY strict JSON:
 }}
 """.strip()
         raw = self.backbone.generate_response_text(prompt)
+        fallback_needed = False
         try:
             parsed = robust_json_parse(raw)
-            indices = parsed.get("selected_indices", []) if isinstance(parsed, dict) else []
-        except (RobustJSONParseError, AttributeError):
+            if not isinstance(parsed, dict):
+                fallback_needed = True
+                indices: list[Any] = []
+            elif "selected_indices" not in parsed:
+                fallback_needed = True
+                indices = []
+            else:
+                raw_indices = parsed.get("selected_indices")
+                if not isinstance(raw_indices, list):
+                    fallback_needed = True
+                    indices = []
+                else:
+                    indices = raw_indices
+        except RobustJSONParseError:
+            fallback_needed = True
             indices = []
 
         selected: list[SyntheticExample] = []
@@ -84,8 +98,8 @@ Return ONLY strict JSON:
             if len(selected) >= k:
                 break
 
-        if not selected:
-            # Conservative fallback keeps dry_run workflows debuggable if selection JSON is malformed.
+        if fallback_needed and not selected:
+            # Apply fallback only when selection output is malformed/unparseable.
             selected = candidates[:k]
             for candidate in selected:
                 candidate.selected = True
