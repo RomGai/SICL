@@ -48,6 +48,31 @@ pip install -r requirements-qwen.txt
 # pip install git+https://github.com/huggingface/diffusers
 ```
 
+## Config file (recommended)
+
+You can run the demo without `export` by using a single JSON config file. See `synthetic_icl/demo_config.example.json` for a complete example.
+
+```bash
+python -m synthetic_icl.demo --config synthetic_icl/demo_config.example.json
+```
+
+Config schema:
+
+- `mllm.api_key`
+- `mllm.base_url`
+- `mllm.model_name`
+- `run.image`
+- `run.query`
+- `run.num_scenarios`
+- `run.num_answers_per_scenario`
+- `run.top_k`
+- `run.image_generation_pipe` (`stub` or `qwen_edit`)
+- `run.dry_run`
+- `run.output_dir`
+- `run.verbose`
+
+CLI flags still work and can override values in the config file.
+
 ## Environment variables
 
 `MLLMBackbone` uses an OpenAI-compatible chat-completions API and reads configuration from environment variables:
@@ -70,11 +95,7 @@ The demo reads a local image, accepts the original query, constructs the pipelin
 
 ```bash
 python -m synthetic_icl.demo \
-  --image /path/to/original.png \
-  --query "子图 A 和 B 谁更加平滑？" \
-  --num-scenarios 5 \
-  --num-answers-per-scenario 1 \
-  --top-k 3
+  --config synthetic_icl/demo_config.example.json
 ```
 
 ## Running optional Qwen image generation

@@ -1,0 +1,18 @@
+{
+  "mllm": {
+    "api_key": "YOUR_API_KEY",
+    "base_url": "https://ai.juguang.chat/v1",
+    "model_name": "gemini-3-flash-preview-thinking"
+  },
+  "run": {
+    "image": "/path/to/original.png",
+    "query": "子图 A 和 B 谁更加平滑？",
+    "num_scenarios": 5,
+    "num_answers_per_scenario": 1,
+    "top_k": 3,
+    "image_generation_pipe": "qwen_edit",
+    "dry_run": false,
+    "output_dir": "synthetic_outputs",
+    "verbose": true
+  }
+}
