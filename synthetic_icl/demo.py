@@ -152,6 +152,18 @@ def main() -> None:
     parser.add_argument("--top-k", type=int, help="Number of selected examples.")
     parser.add_argument("--history-image-window", type=int, help="Number of recent history images for verify/edit context.")
     parser.add_argument(
+        "--preserve-original-query",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Whether synthetic examples must keep the exact original query text.",
+    )
+    parser.add_argument(
+        "--original-image-verify",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Whether verification should compare candidates against the original image/task distribution context.",
+    )
+    parser.add_argument(
         "--image-generation-pipe",
         choices=["stub", "qwen_edit"],
         help="Image generation backend. Use 'qwen_edit' to run Qwen-Image-Edit generation.",
@@ -184,6 +196,10 @@ def main() -> None:
     top_k = int(_coalesce(args.top_k, run_cfg, "top_k") or 3)
     history_image_window_raw = _coalesce(args.history_image_window, run_cfg, "history_image_window")
     history_image_window = int(history_image_window_raw) if history_image_window_raw is not None else 3
+    preserve_original_query_cfg = _coalesce(args.preserve_original_query, run_cfg, "preserve_original_query")
+    preserve_original_query = True if preserve_original_query_cfg is None else bool(preserve_original_query_cfg)
+    original_image_verify_cfg = _coalesce(args.original_image_verify, run_cfg, "original_image_verify")
+    original_image_verify = False if original_image_verify_cfg is None else bool(original_image_verify_cfg)
     answer_sampling_format_retry_times_raw = _coalesce(None, run_cfg, "answer_sampling_format_retry_times")
     answer_sampling_format_retry_times = (
         int(answer_sampling_format_retry_times_raw) if answer_sampling_format_retry_times_raw is not None else 5
@@ -241,6 +257,8 @@ def main() -> None:
                 dry_run=bool(dry_run),
                 verbose=verbose,
                 history_image_window=history_image_window,
+                preserve_original_query=preserve_original_query,
+                original_image_verify=original_image_verify,
             )
 
             if not dry_run:
@@ -268,6 +286,8 @@ def main() -> None:
             dry_run=bool(dry_run),
             verbose=verbose,
             history_image_window=history_image_window,
+            preserve_original_query=preserve_original_query,
+            original_image_verify=original_image_verify,
         )
 
         if not dry_run:

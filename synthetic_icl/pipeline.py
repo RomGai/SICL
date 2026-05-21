@@ -146,6 +146,8 @@ class SyntheticICLPipeline:
         max_regen_try: int = 3,
         max_edit_try: int = 3,
         history_image_window: int = 3,
+        preserve_original_query: bool = True,
+        original_image_verify: bool = False,
     ) -> list[SyntheticExample]:
         """Run the full pipeline and return selected synthetic examples.
 
@@ -170,6 +172,8 @@ class SyntheticICLPipeline:
                 "max_regen_try": max_regen_try,
                 "max_edit_try": max_edit_try,
                 "history_image_window": history_image_window,
+                "preserve_original_query": preserve_original_query,
+                "original_image_verify": original_image_verify,
             }
         }
 
@@ -203,7 +207,12 @@ class SyntheticICLPipeline:
             run_log["scenarios"],
         )
 
-        answer_specs = self.answer_sampling_module.run(task_ir, scenarios, num_answers_per_scenario)
+        answer_specs = self.answer_sampling_module.run(
+            task_ir,
+            scenarios,
+            num_answers_per_scenario,
+            preserve_original_query=preserve_original_query,
+        )
         run_log["answer_specs"] = [answer_spec.to_dict() for answer_spec in answer_specs]
         self._log(
             verbose,
@@ -239,7 +248,7 @@ class SyntheticICLPipeline:
                 task_ir=task_ir,
                 scenario=scenario,
                 answer_spec=answer_spec,
-                original_query=original_query,
+                original_query=answer_spec.query or original_query,
             )
             self._log(
                 verbose,
@@ -292,11 +301,13 @@ class SyntheticICLPipeline:
                 history_context = [self._history_item(item) for item in attempt_candidates]
                 verification_result = self.verification_module.run(
                     synthetic_image=synthetic_image,
-                    original_query=original_query,
+                    original_query=answer_spec.query or original_query,
                     known_answer=answer_spec.answer,
                     task_ir=task_ir,
                     scenario=scenario,
                     answer_spec=answer_spec,
+                    original_image=original_image,
+                    verify_against_original=original_image_verify,
                     attempt_history=history_context,
                     history_images=recent_history_images(),
                 )
@@ -358,7 +369,7 @@ class SyntheticICLPipeline:
                     edit_prompt = self.refinement_prompt_module.run(
                         original_image=original_image,
                         synthetic_image=current_image,
-                        original_query=original_query,
+                        original_query=answer_spec.query or original_query,
                         task_ir=task_ir,
                         scenario=scenario,
                         answer_spec=answer_spec,
@@ -381,11 +392,13 @@ class SyntheticICLPipeline:
                     history_context = [self._history_item(item) for item in attempt_candidates]
                     edited_verification = self.verification_module.run(
                         synthetic_image=edited_image,
-                        original_query=original_query,
+                        original_query=answer_spec.query or original_query,
                         known_answer=answer_spec.answer,
                         task_ir=task_ir,
                         scenario=scenario,
                         answer_spec=answer_spec,
+                        original_image=original_image,
+                        verify_against_original=original_image_verify,
                         attempt_history=history_context,
                         history_images=recent_history_images(),
                     )
@@ -433,7 +446,7 @@ class SyntheticICLPipeline:
             candidates.append(
                 SyntheticExample(
                     image=synthetic_image,
-                    query=original_query,
+                    query=answer_spec.query or original_query,
                     answer=answer_spec.answer,
                     task_ir=task_ir,
                     scenario=scenario,

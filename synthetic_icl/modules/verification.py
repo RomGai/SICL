@@ -27,6 +27,8 @@ class VerificationModule:
         task_ir: TaskIR,
         scenario: ScenarioSpec,
         answer_spec: AnswerSpec,
+        original_image: Image.Image | None = None,
+        verify_against_original: bool = False,
         attempt_history: list[dict[str, Any]] | None = None,
         history_images: list[Image.Image] | None = None,
     ) -> dict[str, Any]:
@@ -47,6 +49,16 @@ class VerificationModule:
                 "edit_targets": [],
             }
 
+        original_alignment_policy = (
+            """
+Additional requirement:
+- Compare the candidate against the ORIGINAL reference image and original task context.
+- Check whether visual distribution, task expression style, and task type remain broadly aligned.
+- If distribution/task-type drift is severe, avoid "accept"; prefer "edit" or "regenerate".
+"""
+            if verify_against_original and original_image is not None
+            else ""
+        )
         prompt = f"""
 You are verifying one synthetic multimodal ICL demonstration image.
 
@@ -94,8 +106,12 @@ Decision policy:
 - recommended_action="accept" when it is already good enough as an ICL demonstration.
 - is_valid_demo should indicate whether this image can be kept as a usable demonstration at all.
 - is_good_enough should be true only when no further editing is needed.
+{original_alignment_policy}
 """.strip()
-        images = [img for img in (history_images or []) if img is not None]
+        images = []
+        if verify_against_original and original_image is not None:
+            images.append(original_image)
+        images.extend([img for img in (history_images or []) if img is not None])
         images.append(synthetic_image)
         if len(images) >= 2:
             raw = self.backbone.generate_response_multimodal_multi(images, prompt)

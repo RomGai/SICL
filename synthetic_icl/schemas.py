@@ -104,7 +104,8 @@ class AnswerSpec:
 
     scenario_id: str
     answer: str
-    answer_rationale: str
+    query: str = ""
+    answer_rationale: str = ""
     visual_constraints_to_make_answer_true: list[str] = field(default_factory=list)
     negative_constraints_to_avoid_ambiguity: list[str] = field(default_factory=list)
 
@@ -113,6 +114,7 @@ class AnswerSpec:
         return cls(
             scenario_id=str(data.get("scenario_id", "")),
             answer=str(data.get("answer", "")),
+            query=str(data.get("query", "")),
             answer_rationale=str(data.get("answer_rationale", "")),
             visual_constraints_to_make_answer_true=_list_str(
                 data.get("visual_constraints_to_make_answer_true")
