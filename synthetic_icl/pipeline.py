@@ -147,6 +147,7 @@ class SyntheticICLPipeline:
         max_edit_try: int = 3,
         history_image_window: int = 3,
         preserve_original_query: bool = True,
+        original_image_verify: bool = False,
     ) -> list[SyntheticExample]:
         """Run the full pipeline and return selected synthetic examples.
 
@@ -172,6 +173,7 @@ class SyntheticICLPipeline:
                 "max_edit_try": max_edit_try,
                 "history_image_window": history_image_window,
                 "preserve_original_query": preserve_original_query,
+                "original_image_verify": original_image_verify,
             }
         }
 
@@ -304,6 +306,8 @@ class SyntheticICLPipeline:
                     task_ir=task_ir,
                     scenario=scenario,
                     answer_spec=answer_spec,
+                    original_image=original_image,
+                    verify_against_original=original_image_verify,
                     attempt_history=history_context,
                     history_images=recent_history_images(),
                 )
@@ -393,6 +397,8 @@ class SyntheticICLPipeline:
                         task_ir=task_ir,
                         scenario=scenario,
                         answer_spec=answer_spec,
+                        original_image=original_image,
+                        verify_against_original=original_image_verify,
                         attempt_history=history_context,
                         history_images=recent_history_images(),
                     )
