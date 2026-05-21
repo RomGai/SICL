@@ -68,6 +68,7 @@ Config schema:
 - `run.num_scenarios`
 - `run.num_answers_per_scenario`
 - `run.top_k`
+- `run.preserve_original_query` (`true` by default; set `false` to allow scenario-matched query rewriting)
 - `run.image_generation_pipe` (`stub` or `qwen_edit`)
 - `run.dry_run`
 - `run.output_dir`
