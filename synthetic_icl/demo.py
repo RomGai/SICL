@@ -149,8 +149,21 @@ def main() -> None:
     parser.add_argument("--query", help="Original query. It will not be rewritten.")
     parser.add_argument("--num-scenarios", type=int, help="Number of scenarios to expand.")
     parser.add_argument("--num-answers-per-scenario", type=int, help="Answers per scenario.")
+    parser.add_argument("--scenario-regen-rounds", type=int, help="Max regeneration rounds to refill aligned scenarios.")
     parser.add_argument("--top-k", type=int, help="Number of selected examples.")
     parser.add_argument("--history-image-window", type=int, help="Number of recent history images for verify/edit context.")
+    parser.add_argument(
+        "--preserve-original-query",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Whether synthetic examples must keep the exact original query text.",
+    )
+    parser.add_argument(
+        "--original-image-verify",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Whether verification should compare candidates against the original image/task distribution context.",
+    )
     parser.add_argument(
         "--image-generation-pipe",
         choices=["stub", "qwen_edit"],
@@ -181,9 +194,14 @@ def main() -> None:
     query = _coalesce(args.query, run_cfg, "query")
     num_scenarios = int(_coalesce(args.num_scenarios, run_cfg, "num_scenarios") or 5)
     num_answers_per_scenario = int(_coalesce(args.num_answers_per_scenario, run_cfg, "num_answers_per_scenario") or 1)
+    scenario_regen_rounds = int(_coalesce(args.scenario_regen_rounds, run_cfg, "scenario_regen_rounds") or 3)
     top_k = int(_coalesce(args.top_k, run_cfg, "top_k") or 3)
     history_image_window_raw = _coalesce(args.history_image_window, run_cfg, "history_image_window")
     history_image_window = int(history_image_window_raw) if history_image_window_raw is not None else 3
+    preserve_original_query_cfg = _coalesce(args.preserve_original_query, run_cfg, "preserve_original_query")
+    preserve_original_query = True if preserve_original_query_cfg is None else bool(preserve_original_query_cfg)
+    original_image_verify_cfg = _coalesce(args.original_image_verify, run_cfg, "original_image_verify")
+    original_image_verify = False if original_image_verify_cfg is None else bool(original_image_verify_cfg)
     answer_sampling_format_retry_times_raw = _coalesce(None, run_cfg, "answer_sampling_format_retry_times")
     answer_sampling_format_retry_times = (
         int(answer_sampling_format_retry_times_raw) if answer_sampling_format_retry_times_raw is not None else 5
@@ -241,6 +259,9 @@ def main() -> None:
                 dry_run=bool(dry_run),
                 verbose=verbose,
                 history_image_window=history_image_window,
+                preserve_original_query=preserve_original_query,
+                original_image_verify=original_image_verify,
+                scenario_regen_rounds=scenario_regen_rounds,
             )
 
             if not dry_run:
@@ -268,6 +289,9 @@ def main() -> None:
             dry_run=bool(dry_run),
             verbose=verbose,
             history_image_window=history_image_window,
+            preserve_original_query=preserve_original_query,
+            original_image_verify=original_image_verify,
+            scenario_regen_rounds=scenario_regen_rounds,
         )
 
         if not dry_run:
