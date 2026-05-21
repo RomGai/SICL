@@ -12,8 +12,9 @@ from synthetic_icl.schemas import AnswerSpec, ScenarioSpec, TaskIR
 class AnswerSamplingModule:
     """Pre-commit answers and image constraints before generation."""
 
-    def __init__(self, backbone: MLLMBackbone) -> None:
+    def __init__(self, backbone: MLLMBackbone, format_retry_times: int = 0) -> None:
         self.backbone = backbone
+        self.format_retry_times = max(0, int(format_retry_times))
 
     def run(
         self,
@@ -48,12 +49,24 @@ Return ONLY a strict JSON array. Each object schema:
   "negative_constraints_to_avoid_ambiguity": [string]
 }}
 """.strip()
-        raw = self.backbone.generate_response_text(prompt)
-        parsed = robust_json_parse(raw)
-        if isinstance(parsed, dict) and "answers" in parsed:
-            parsed = parsed["answers"]
+        parsed = None
+        last_raw = ""
+        max_attempts = self.format_retry_times + 1
+        for _ in range(max_attempts):
+            raw = self.backbone.generate_response_text(prompt)
+            last_raw = raw
+            parsed = robust_json_parse(raw)
+            if isinstance(parsed, dict) and "answers" in parsed:
+                parsed = parsed["answers"]
+            if isinstance(parsed, list):
+                break
+
         if not isinstance(parsed, list):
-            raise ValueError("AnswerSamplingModule expected a JSON array or {'answers': [...]}.")
+            preview = last_raw[:400].replace("\n", "\\n")
+            raise ValueError(
+                "AnswerSamplingModule expected a JSON array or {'answers': [...]} "
+                f"after {max_attempts} attempt(s). Last raw preview: {preview}"
+            )
         scenario_ids = {scenario.scenario_id for scenario in scenarios}
         answers: list[AnswerSpec] = []
         for item in parsed:

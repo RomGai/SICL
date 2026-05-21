@@ -57,7 +57,7 @@ def _iter_test_pt_cases(test_pt_path: Path):
     if not test_pt_path.exists():
         raise FileNotFoundError(f"Test pt file not found: {test_pt_path}")
 
-    dataset = torch.load(test_pt_path, map_location="cpu", weights_only=False)
+    dataset = torch.load(test_pt_path, map_location="cpu")
     if not isinstance(dataset, list):
         raise ValueError("Loaded test .pt data must be a list of dict entries.")
 
@@ -184,6 +184,10 @@ def main() -> None:
     top_k = int(_coalesce(args.top_k, run_cfg, "top_k") or 3)
     history_image_window_raw = _coalesce(args.history_image_window, run_cfg, "history_image_window")
     history_image_window = int(history_image_window_raw) if history_image_window_raw is not None else 3
+    answer_sampling_format_retry_times_raw = _coalesce(None, run_cfg, "answer_sampling_format_retry_times")
+    answer_sampling_format_retry_times = (
+        int(answer_sampling_format_retry_times_raw) if answer_sampling_format_retry_times_raw is not None else 5
+    )
     image_generation_pipe = _coalesce(args.image_generation_pipe, run_cfg, "image_generation_pipe") or "stub"
     output_dir = _coalesce(args.output_dir, run_cfg, "output_dir") or "synthetic_outputs"
     test_pt_path_raw = _coalesce(None, run_cfg, "test_pt_path")
@@ -216,6 +220,8 @@ def main() -> None:
         model=_coalesce(args.mllm_model_name, mllm_cfg, "model_name"),
     )
     pipeline = SyntheticICLPipeline(backbone, image_generation_module=image_generation_module)
+    if hasattr(pipeline.answer_sampling_module, "format_retry_times"):
+        pipeline.answer_sampling_module.format_retry_times = max(0, answer_sampling_format_retry_times)
     output_root = Path(output_dir)
 
     if test_pt_path is not None:
