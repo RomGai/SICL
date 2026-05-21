@@ -15,6 +15,20 @@ class ScenarioExpansionModule:
     def __init__(self, backbone: MLLMBackbone) -> None:
         self.backbone = backbone
 
+    @staticmethod
+    def _to_bool(value: object) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"true", "1", "yes"}:
+                return True
+            if normalized in {"false", "0", "no", ""}:
+                return False
+        if isinstance(value, (int, float)):
+            return value != 0
+        return False
+
     def _is_scenario_aligned(self, task_ir: TaskIR, scenario: ScenarioSpec) -> bool:
         prompt = f"""
 You are validating whether a proposed synthetic scenario stays aligned with the source task intent.
@@ -40,7 +54,7 @@ aligned=true only if this scenario preserves task type, target comparison/attrib
         parsed = robust_json_parse(raw)
         if not isinstance(parsed, dict):
             return False
-        return bool(parsed.get("aligned"))
+        return self._to_bool(parsed.get("aligned"))
 
     def run(self, task_ir: TaskIR, num_scenarios: int, max_regen_rounds: int = 3) -> list[ScenarioSpec]:
         prompt = f"""

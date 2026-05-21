@@ -60,6 +60,22 @@ Additional requirement:
             if verify_against_original and original_image is not None
             else ""
         )
+        sequence_instructions = (
+            """
+Image sequence protocol:
+- The FIRST attached image is the ORIGINAL reference image for task/distribution alignment.
+- Any middle images are prior synthetic attempts (history only).
+- The LAST attached image is the CURRENT candidate to evaluate.
+- Do NOT score the first/middle images as candidates; use them only as reference context.
+"""
+            if verify_against_original and original_image is not None
+            else """
+Image sequence protocol:
+- If multiple images are attached, treat earlier images as prior synthetic attempts (history only).
+- The LAST attached image is the CURRENT candidate to evaluate.
+- Do NOT score earlier images as candidates.
+"""
+        )
         prompt = f"""
 You are verifying one synthetic multimodal ICL demonstration image.
 
@@ -84,8 +100,7 @@ AnswerSpec:
 Compact attempt history (latest few; use as context, avoid repeating failed edits):
 {json.dumps((attempt_history or [])[-3:], ensure_ascii=False, indent=2)}
 
-If multiple images are attached, treat them as an ordered sequence of prior attempts followed by the CURRENT candidate.
-You must score only the LAST attached image as the candidate under evaluation; earlier images are historical context only.
+{sequence_instructions}
 
 Return ONLY strict JSON:
 {{
