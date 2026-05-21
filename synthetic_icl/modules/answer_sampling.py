@@ -82,7 +82,9 @@ Return ONLY a strict JSON array. Each object schema:
                 continue
             spec = AnswerSpec.from_dict(item)
             if spec.scenario_id in scenario_ids:
-                if preserve_original_query or not spec.query:
+                normalized_query = str(spec.query).strip()
+                spec.query = normalized_query
+                if preserve_original_query or not normalized_query:
                     spec.query = task_ir.original_query
                 answers.append(spec)
         return answers
