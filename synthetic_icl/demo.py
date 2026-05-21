@@ -57,7 +57,7 @@ def _iter_test_pt_cases(test_pt_path: Path):
     if not test_pt_path.exists():
         raise FileNotFoundError(f"Test pt file not found: {test_pt_path}")
 
-    dataset = torch.load(test_pt_path, map_location="cpu")
+    dataset = torch.load(test_pt_path, map_location="cpu", weights_only=False)
     if not isinstance(dataset, list):
         raise ValueError("Loaded test .pt data must be a list of dict entries.")
 
