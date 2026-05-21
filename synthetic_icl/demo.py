@@ -149,6 +149,7 @@ def main() -> None:
     parser.add_argument("--query", help="Original query. It will not be rewritten.")
     parser.add_argument("--num-scenarios", type=int, help="Number of scenarios to expand.")
     parser.add_argument("--num-answers-per-scenario", type=int, help="Answers per scenario.")
+    parser.add_argument("--scenario-regen-rounds", type=int, help="Max regeneration rounds to refill aligned scenarios.")
     parser.add_argument("--top-k", type=int, help="Number of selected examples.")
     parser.add_argument("--history-image-window", type=int, help="Number of recent history images for verify/edit context.")
     parser.add_argument(
@@ -193,6 +194,7 @@ def main() -> None:
     query = _coalesce(args.query, run_cfg, "query")
     num_scenarios = int(_coalesce(args.num_scenarios, run_cfg, "num_scenarios") or 5)
     num_answers_per_scenario = int(_coalesce(args.num_answers_per_scenario, run_cfg, "num_answers_per_scenario") or 1)
+    scenario_regen_rounds = int(_coalesce(args.scenario_regen_rounds, run_cfg, "scenario_regen_rounds") or 3)
     top_k = int(_coalesce(args.top_k, run_cfg, "top_k") or 3)
     history_image_window_raw = _coalesce(args.history_image_window, run_cfg, "history_image_window")
     history_image_window = int(history_image_window_raw) if history_image_window_raw is not None else 3
@@ -259,6 +261,7 @@ def main() -> None:
                 history_image_window=history_image_window,
                 preserve_original_query=preserve_original_query,
                 original_image_verify=original_image_verify,
+                scenario_regen_rounds=scenario_regen_rounds,
             )
 
             if not dry_run:
@@ -288,6 +291,7 @@ def main() -> None:
             history_image_window=history_image_window,
             preserve_original_query=preserve_original_query,
             original_image_verify=original_image_verify,
+            scenario_regen_rounds=scenario_regen_rounds,
         )
 
         if not dry_run:

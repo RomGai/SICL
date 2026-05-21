@@ -148,6 +148,7 @@ class SyntheticICLPipeline:
         history_image_window: int = 3,
         preserve_original_query: bool = True,
         original_image_verify: bool = False,
+        scenario_regen_rounds: int = 3,
     ) -> list[SyntheticExample]:
         """Run the full pipeline and return selected synthetic examples.
 
@@ -174,6 +175,7 @@ class SyntheticICLPipeline:
                 "history_image_window": history_image_window,
                 "preserve_original_query": preserve_original_query,
                 "original_image_verify": original_image_verify,
+                "scenario_regen_rounds": scenario_regen_rounds,
             }
         }
 
@@ -198,7 +200,7 @@ class SyntheticICLPipeline:
         run_log["task_ir"] = task_ir.to_dict()
         self._log(verbose, "task_induction", "Task induction completed.", task_ir.to_dict())
 
-        scenarios = self.scenario_expansion_module.run(task_ir, num_scenarios)
+        scenarios = self.scenario_expansion_module.run(task_ir, num_scenarios, max_regen_rounds=scenario_regen_rounds)
         run_log["scenarios"] = [scenario.to_dict() for scenario in scenarios]
         self._log(
             verbose,
@@ -301,11 +303,12 @@ class SyntheticICLPipeline:
                 history_context = [self._history_item(item) for item in attempt_candidates]
                 verification_result = self.verification_module.run(
                     synthetic_image=synthetic_image,
-                    original_query=answer_spec.query or original_query,
+                    evaluation_query=answer_spec.query or original_query,
                     known_answer=answer_spec.answer,
                     task_ir=task_ir,
                     scenario=scenario,
                     answer_spec=answer_spec,
+                    source_query=original_query,
                     original_image=original_image,
                     verify_against_original=original_image_verify,
                     attempt_history=history_context,
@@ -369,7 +372,8 @@ class SyntheticICLPipeline:
                     edit_prompt = self.refinement_prompt_module.run(
                         original_image=original_image,
                         synthetic_image=current_image,
-                        original_query=answer_spec.query or original_query,
+                        evaluation_query=answer_spec.query or original_query,
+                        source_query=original_query,
                         task_ir=task_ir,
                         scenario=scenario,
                         answer_spec=answer_spec,
@@ -392,11 +396,12 @@ class SyntheticICLPipeline:
                     history_context = [self._history_item(item) for item in attempt_candidates]
                     edited_verification = self.verification_module.run(
                         synthetic_image=edited_image,
-                        original_query=answer_spec.query or original_query,
+                        evaluation_query=answer_spec.query or original_query,
                         known_answer=answer_spec.answer,
                         task_ir=task_ir,
                         scenario=scenario,
                         answer_spec=answer_spec,
+                        source_query=original_query,
                         original_image=original_image,
                         verify_against_original=original_image_verify,
                         attempt_history=history_context,

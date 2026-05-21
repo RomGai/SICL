@@ -66,6 +66,7 @@ Config schema:
 - `run.image`
 - `run.query`
 - `run.num_scenarios`
+- `run.scenario_regen_rounds` (max refill rounds when aligned scenarios are insufficient; default `3`)
 - `run.num_answers_per_scenario`
 - `run.top_k`
 - `run.preserve_original_query` (`true` by default; set `false` to allow scenario-matched query rewriting)

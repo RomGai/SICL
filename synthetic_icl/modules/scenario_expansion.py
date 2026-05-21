@@ -15,7 +15,34 @@ class ScenarioExpansionModule:
     def __init__(self, backbone: MLLMBackbone) -> None:
         self.backbone = backbone
 
-    def run(self, task_ir: TaskIR, num_scenarios: int) -> list[ScenarioSpec]:
+    def _is_scenario_aligned(self, task_ir: TaskIR, scenario: ScenarioSpec) -> bool:
+        prompt = f"""
+You are validating whether a proposed synthetic scenario stays aligned with the source task intent.
+
+Source query:
+{json.dumps(task_ir.original_query, ensure_ascii=False)}
+
+TaskIR:
+{json.dumps(task_ir.to_dict(), ensure_ascii=False, indent=2)}
+
+ScenarioSpec:
+{json.dumps(scenario.to_dict(), ensure_ascii=False, indent=2)}
+
+Return ONLY strict JSON:
+{{
+  "aligned": true,
+  "reason": string
+}}
+
+aligned=true only if this scenario preserves task type, target comparison/attribute intent, and stays near the original task's visual domain.
+""".strip()
+        raw = self.backbone.generate_response_text(prompt)
+        parsed = robust_json_parse(raw)
+        if not isinstance(parsed, dict):
+            return False
+        return bool(parsed.get("aligned"))
+
+    def run(self, task_ir: TaskIR, num_scenarios: int, max_regen_rounds: int = 3) -> list[ScenarioSpec]:
         prompt = f"""
 You are expanding visual scenarios for query-driven synthetic multimodal ICL.
 
@@ -46,13 +73,32 @@ Return ONLY a strict JSON array. Each object schema:
   "difficulty_level": "easy|medium|hard"
 }}
 """.strip()
-        raw = self.backbone.generate_response_text(prompt)
-        parsed = robust_json_parse(raw)
-        if isinstance(parsed, dict) and "scenarios" in parsed:
-            parsed = parsed["scenarios"]
-        if not isinstance(parsed, list):
-            raise ValueError("ScenarioExpansionModule expected a JSON array or {'scenarios': [...]}.")
-        scenarios = [ScenarioSpec.from_dict(item) for item in parsed[:num_scenarios] if isinstance(item, dict)]
+        if num_scenarios <= 0:
+            return []
+        aligned_scenarios: list[ScenarioSpec] = []
+        seen_signatures: set[str] = set()
+        rounds = max(1, int(max_regen_rounds))
+        for _ in range(rounds):
+            needed = num_scenarios - len(aligned_scenarios)
+            if needed <= 0:
+                break
+            raw = self.backbone.generate_response_text(prompt.replace(f"Generate {num_scenarios} new ScenarioSpec objects.", f"Generate {needed} new ScenarioSpec objects."))
+            parsed = robust_json_parse(raw)
+            if isinstance(parsed, dict) and "scenarios" in parsed:
+                parsed = parsed["scenarios"]
+            if not isinstance(parsed, list):
+                continue
+            scenarios = [ScenarioSpec.from_dict(item) for item in parsed if isinstance(item, dict)]
+            for scenario in scenarios:
+                if len(aligned_scenarios) >= num_scenarios:
+                    break
+                signature = f"{scenario.domain}|{scenario.scenario_description}".strip().lower()
+                if signature in seen_signatures:
+                    continue
+                if self._is_scenario_aligned(task_ir, scenario):
+                    seen_signatures.add(signature)
+                    aligned_scenarios.append(scenario)
+        scenarios = aligned_scenarios[:num_scenarios]
         for idx, scenario in enumerate(scenarios, start=1):
             if not scenario.scenario_id:
                 scenario.scenario_id = f"scenario_{idx:03d}"

@@ -22,11 +22,12 @@ class VerificationModule:
     def run(
         self,
         synthetic_image: Image.Image | None,
-        original_query: str,
+        evaluation_query: str,
         known_answer: str,
         task_ir: TaskIR,
         scenario: ScenarioSpec,
         answer_spec: AnswerSpec,
+        source_query: str | None = None,
         original_image: Image.Image | None = None,
         verify_against_original: bool = False,
         attempt_history: list[dict[str, Any]] | None = None,
@@ -62,8 +63,11 @@ Additional requirement:
         prompt = f"""
 You are verifying one synthetic multimodal ICL demonstration image.
 
-Exact query to answer from the attached synthetic image:
-{json.dumps(original_query, ensure_ascii=False)}
+Evaluation query to answer from the attached synthetic image:
+{json.dumps(evaluation_query, ensure_ascii=False)}
+
+Source/original query for task-alignment reference:
+{json.dumps(source_query or task_ir.original_query, ensure_ascii=False)}
 
 Known planned answer:
 {json.dumps(known_answer, ensure_ascii=False)}
