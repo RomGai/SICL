@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 from synthetic_icl.backbone import MLLMBackbone
-from synthetic_icl.json_utils import robust_json_parse
+from synthetic_icl.json_utils import RobustJSONParseError, robust_json_parse
 from synthetic_icl.schemas import ScenarioSpec, TaskIR
 
 
@@ -51,7 +51,10 @@ Return ONLY strict JSON:
 aligned=true only if this scenario preserves task type, target comparison/attribute intent, and stays near the original task's visual domain.
 """.strip()
         raw = self.backbone.generate_response_text(prompt)
-        parsed = robust_json_parse(raw)
+        try:
+            parsed = robust_json_parse(raw)
+        except RobustJSONParseError:
+            return False
         if not isinstance(parsed, dict):
             return False
         return self._to_bool(parsed.get("aligned"))
@@ -92,16 +95,23 @@ Return ONLY a strict JSON array. Each object schema:
         aligned_scenarios: list[ScenarioSpec] = []
         seen_signatures: set[str] = set()
         rounds = max(1, int(max_regen_rounds))
+        got_valid_scenario_list = False
+        parse_error_count = 0
         for _ in range(rounds):
             needed = num_scenarios - len(aligned_scenarios)
             if needed <= 0:
                 break
             raw = self.backbone.generate_response_text(prompt.replace(f"Generate {num_scenarios} new ScenarioSpec objects.", f"Generate {needed} new ScenarioSpec objects."))
-            parsed = robust_json_parse(raw)
+            try:
+                parsed = robust_json_parse(raw)
+            except RobustJSONParseError:
+                parse_error_count += 1
+                continue
             if isinstance(parsed, dict) and "scenarios" in parsed:
                 parsed = parsed["scenarios"]
             if not isinstance(parsed, list):
                 continue
+            got_valid_scenario_list = True
             scenarios = [ScenarioSpec.from_dict(item) for item in parsed if isinstance(item, dict)]
             for scenario in scenarios:
                 if len(aligned_scenarios) >= num_scenarios:
@@ -112,6 +122,11 @@ Return ONLY a strict JSON array. Each object schema:
                 if self._is_scenario_aligned(task_ir, scenario):
                     seen_signatures.add(signature)
                     aligned_scenarios.append(scenario)
+        if not got_valid_scenario_list:
+            raise ValueError(
+                "ScenarioExpansionModule did not receive a valid scenario list from model output "
+                f"after {rounds} round(s). parse_errors={parse_error_count}."
+            )
         scenarios = aligned_scenarios[:num_scenarios]
         for idx, scenario in enumerate(scenarios, start=1):
             if not scenario.scenario_id:
