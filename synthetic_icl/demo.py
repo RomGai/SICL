@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 from dataclasses import asdict
 from pathlib import Path
@@ -28,6 +29,51 @@ def _save_generated_images(examples: list[SyntheticExample], output_dir: Path) -
         image_path = output_dir / f"{idx:03d}_{safe_scenario_id}.png"
         example.image.save(image_path)
         example.verification_result.setdefault("saved_image_path", str(image_path.resolve()))
+
+
+def _save_dataset_case_assets(case_dir: Path, case_idx: int, image_bytes: bytes, prompt: str, groundtruth: str) -> None:
+    import importlib.util
+
+    if importlib.util.find_spec("PIL") is None:
+        raise ImportError("Pillow is required to load images. Install it with: pip install Pillow")
+
+    from PIL import Image
+
+    case_dir.mkdir(parents=True, exist_ok=True)
+    with Image.open(io.BytesIO(image_bytes)) as gt_img:
+        gt_img.convert("RGB").save(case_dir / f"{case_idx}_gt.png")
+    _save_json_log(
+        {
+            "prompt": prompt,
+            "groundtruth": groundtruth,
+        },
+        case_dir / "meta.json",
+    )
+
+
+def _iter_test_pt_cases(test_pt_path: Path):
+    import torch
+
+    if not test_pt_path.exists():
+        raise FileNotFoundError(f"Test pt file not found: {test_pt_path}")
+
+    dataset = torch.load(test_pt_path, map_location="cpu")
+    if not isinstance(dataset, list):
+        raise ValueError("Loaded test .pt data must be a list of dict entries.")
+
+    for idx, item in enumerate(dataset):
+        if not isinstance(item, dict):
+            raise ValueError(f"Entry at index {idx} is not a dict.")
+        prompt = item.get("prompt")
+        groundtruth = item.get("groundtruth")
+        image_bytes = item.get("image")
+        if not isinstance(prompt, str) or not prompt:
+            raise ValueError(f"Entry at index {idx} has invalid prompt.")
+        if not isinstance(groundtruth, str):
+            raise ValueError(f"Entry at index {idx} has invalid groundtruth.")
+        if not isinstance(image_bytes, (bytes, bytearray)):
+            raise ValueError(f"Entry at index {idx} has invalid image bytes.")
+        yield idx, prompt, groundtruth, bytes(image_bytes)
 
 
 def _save_attempt_artifacts(attempt_traces: list[dict[str, Any]], output_dir: Path) -> None:
@@ -140,13 +186,16 @@ def main() -> None:
     history_image_window = int(history_image_window_raw) if history_image_window_raw is not None else 3
     image_generation_pipe = _coalesce(args.image_generation_pipe, run_cfg, "image_generation_pipe") or "stub"
     output_dir = _coalesce(args.output_dir, run_cfg, "output_dir") or "synthetic_outputs"
+    test_pt_path_raw = _coalesce(None, run_cfg, "test_pt_path")
     log_json_path = _coalesce(args.log_json_path, run_cfg, "log_json_path")
     verbose = bool(_coalesce(args.verbose, run_cfg, "verbose") if _coalesce(args.verbose, run_cfg, "verbose") is not None else False)
 
-    if not image:
-        raise ValueError("Missing image path. Provide --image or run.image in config.")
-    if not query:
-        raise ValueError("Missing query. Provide --query or run.query in config.")
+    test_pt_path = Path(test_pt_path_raw) if test_pt_path_raw else None
+    if test_pt_path is None:
+        if not image:
+            raise ValueError("Missing image path. Provide --image or run.image in config.")
+        if not query:
+            raise ValueError("Missing query. Provide --query or run.query in config.")
 
     dry_run = args.dry_run if args.dry_run is not None else run_cfg.get("dry_run")
     if dry_run is None:
@@ -159,13 +208,6 @@ def main() -> None:
 
     from PIL import Image
 
-    image_path = Path(image)
-    if not image_path.exists():
-        raise FileNotFoundError(f"Image not found: {image_path}")
-
-    with Image.open(image_path) as img:
-        original_image = img.convert("RGB")
-
     image_generation_module = create_image_generation_module(image_generation_pipe)
 
     backbone = MLLMBackbone(
@@ -174,34 +216,71 @@ def main() -> None:
         model=_coalesce(args.mllm_model_name, mllm_cfg, "model_name"),
     )
     pipeline = SyntheticICLPipeline(backbone, image_generation_module=image_generation_module)
-    selected_examples = pipeline.run(
-        original_image=original_image,
-        original_query=query,
-        num_scenarios=num_scenarios,
-        num_answers_per_scenario=num_answers_per_scenario,
-        top_k=top_k,
-        dry_run=bool(dry_run),
-        verbose=verbose,
-        history_image_window=history_image_window,
-    )
+    output_root = Path(output_dir)
 
-    if not dry_run:
-        _save_generated_images(pipeline.last_candidates, Path(output_dir))
-        _save_attempt_artifacts(pipeline.last_attempt_traces, Path(output_dir))
+    if test_pt_path is not None:
+        for idx, prompt, groundtruth, image_bytes in _iter_test_pt_cases(test_pt_path):
+            case_dir = output_root / str(idx)
+            _save_dataset_case_assets(case_dir, idx, image_bytes, prompt, groundtruth)
 
-    if log_json_path:
-        _save_json_log(pipeline.last_run_log, Path(log_json_path))
+            with Image.open(io.BytesIO(image_bytes)) as img:
+                original_image = img.convert("RGB")
 
-    if selected_examples:
-        _print_json("TaskIR", selected_examples[0].task_ir.to_dict())
+            selected_examples = pipeline.run(
+                original_image=original_image,
+                original_query=prompt,
+                num_scenarios=num_scenarios,
+                num_answers_per_scenario=num_answers_per_scenario,
+                top_k=top_k,
+                dry_run=bool(dry_run),
+                verbose=verbose,
+                history_image_window=history_image_window,
+            )
 
-    _print_json("ScenarioSpecs", [example.scenario.to_dict() for example in pipeline.last_candidates])
-    _print_json("AnswerSpecs", [example.answer_spec.to_dict() for example in pipeline.last_candidates])
-    _print_json(
-        "Generation Prompts",
-        [asdict(example.generation_prompt) for example in pipeline.last_candidates],
-    )
-    _print_json("Selected Examples Metadata", [example.to_metadata_dict() for example in selected_examples])
+            if not dry_run:
+                _save_generated_images(pipeline.last_candidates, case_dir)
+                _save_attempt_artifacts(pipeline.last_attempt_traces, case_dir)
+
+            if log_json_path:
+                _save_json_log(pipeline.last_run_log, case_dir / Path(log_json_path).name)
+
+            _print_json("Selected Examples Metadata", [example.to_metadata_dict() for example in selected_examples])
+    else:
+        image_path = Path(image)
+        if not image_path.exists():
+            raise FileNotFoundError(f"Image not found: {image_path}")
+
+        with Image.open(image_path) as img:
+            original_image = img.convert("RGB")
+
+        selected_examples = pipeline.run(
+            original_image=original_image,
+            original_query=query,
+            num_scenarios=num_scenarios,
+            num_answers_per_scenario=num_answers_per_scenario,
+            top_k=top_k,
+            dry_run=bool(dry_run),
+            verbose=verbose,
+            history_image_window=history_image_window,
+        )
+
+        if not dry_run:
+            _save_generated_images(pipeline.last_candidates, output_root)
+            _save_attempt_artifacts(pipeline.last_attempt_traces, output_root)
+
+        if log_json_path:
+            _save_json_log(pipeline.last_run_log, Path(log_json_path))
+
+        if selected_examples:
+            _print_json("TaskIR", selected_examples[0].task_ir.to_dict())
+
+        _print_json("ScenarioSpecs", [example.scenario.to_dict() for example in pipeline.last_candidates])
+        _print_json("AnswerSpecs", [example.answer_spec.to_dict() for example in pipeline.last_candidates])
+        _print_json(
+            "Generation Prompts",
+            [asdict(example.generation_prompt) for example in pipeline.last_candidates],
+        )
+        _print_json("Selected Examples Metadata", [example.to_metadata_dict() for example in selected_examples])
 
 
 if __name__ == "__main__":
