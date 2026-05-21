@@ -21,7 +21,14 @@ class AnswerSamplingModule:
         task_ir: TaskIR,
         scenarios: list[ScenarioSpec],
         num_answers_per_scenario: int,
+        preserve_original_query: bool = True,
     ) -> list[AnswerSpec]:
+        query_policy = (
+            f"- The query will remain exactly: {json.dumps(task_ir.original_query, ensure_ascii=False)}\n"
+            "- Do NOT create, suggest, or include any new question text."
+            if preserve_original_query
+            else "- For each scenario, create a scenario-matched query that keeps the same task goal and information granularity as TaskIR.original_query."
+        )
         prompt = f"""
 You are assigning known answers for synthetic multimodal ICL examples BEFORE images are generated.
 
@@ -34,7 +41,7 @@ Scenarios:
 For each scenario, create {num_answers_per_scenario} AnswerSpec object(s).
 
 Hard constraints:
-- The query will remain exactly: {json.dumps(task_ir.original_query, ensure_ascii=False)}
+{query_policy}
 - Do NOT infer answers from an existing generated image; these are planned labels.
 - The answer must fit answer_type and candidate_answer_space when available.
 - Provide visual constraints that make the known answer unambiguously true.
@@ -43,6 +50,7 @@ Hard constraints:
 Return ONLY a strict JSON array. Each object schema:
 {{
   "scenario_id": string,
+  "query": string,
   "answer": string,
   "answer_rationale": string,
   "visual_constraints_to_make_answer_true": [string],
@@ -74,5 +82,7 @@ Return ONLY a strict JSON array. Each object schema:
                 continue
             spec = AnswerSpec.from_dict(item)
             if spec.scenario_id in scenario_ids:
+                if preserve_original_query or not spec.query:
+                    spec.query = task_ir.original_query
                 answers.append(spec)
         return answers

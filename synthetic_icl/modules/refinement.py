@@ -23,7 +23,8 @@ class ImageRefinementPromptModule:
         self,
         original_image: Image.Image,
         synthetic_image: Image.Image,
-        original_query: str,
+        evaluation_query: str,
+        source_query: str,
         task_ir: TaskIR,
         scenario: ScenarioSpec,
         answer_spec: AnswerSpec,
@@ -35,8 +36,11 @@ class ImageRefinementPromptModule:
         prompt = f"""
 You are improving a synthetic multimodal ICL sample via image editing.
 
-Exact query (must remain unchanged):
-{json.dumps(original_query, ensure_ascii=False)}
+Evaluation query for current synthetic sample (must remain unchanged during this edit):
+{json.dumps(evaluation_query, ensure_ascii=False)}
+
+Source/original query for task-alignment reference:
+{json.dumps(source_query, ensure_ascii=False)}
 
 TaskIR:
 {json.dumps(task_ir.to_dict(), ensure_ascii=False, indent=2)}
