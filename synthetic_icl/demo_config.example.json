@@ -15,6 +15,7 @@
     "dry_run": false,
     "output_dir": "synthetic_outputs",
     "verbose": true,
-    "log_json_path": "synthetic_outputs/pipeline_log.json"
+    "log_json_path": "synthetic_outputs/pipeline_log.json",
+    "test_pt_path": "test_CharXiv.pt"
   }
 }
