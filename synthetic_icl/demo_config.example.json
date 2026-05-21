@@ -16,6 +16,6 @@
     "output_dir": "synthetic_outputs",
     "verbose": true,
     "log_json_path": "synthetic_outputs/pipeline_log.json",
-    "test_pt_path": "test_CharXiv.pt"
+    "test_pt_path": "synthetic_icl/test_data/test_CharXiv.pt"
   }
 }
