@@ -22,11 +22,14 @@ class VerificationModule:
     def run(
         self,
         synthetic_image: Image.Image | None,
-        original_query: str,
+        evaluation_query: str,
         known_answer: str,
         task_ir: TaskIR,
         scenario: ScenarioSpec,
         answer_spec: AnswerSpec,
+        source_query: str | None = None,
+        original_image: Image.Image | None = None,
+        verify_against_original: bool = False,
         attempt_history: list[dict[str, Any]] | None = None,
         history_images: list[Image.Image] | None = None,
     ) -> dict[str, Any]:
@@ -47,11 +50,24 @@ class VerificationModule:
                 "edit_targets": [],
             }
 
+        original_alignment_policy = (
+            """
+Additional requirement:
+- Compare the candidate against the ORIGINAL reference image and original task context.
+- Check whether visual distribution, task expression style, and task type remain broadly aligned.
+- If distribution/task-type drift is severe, avoid "accept"; prefer "edit" or "regenerate".
+"""
+            if verify_against_original and original_image is not None
+            else ""
+        )
         prompt = f"""
 You are verifying one synthetic multimodal ICL demonstration image.
 
-Exact query to answer from the attached synthetic image:
-{json.dumps(original_query, ensure_ascii=False)}
+Evaluation query to answer from the attached synthetic image:
+{json.dumps(evaluation_query, ensure_ascii=False)}
+
+Source/original query for task-alignment reference:
+{json.dumps(source_query or task_ir.original_query, ensure_ascii=False)}
 
 Known planned answer:
 {json.dumps(known_answer, ensure_ascii=False)}
@@ -94,8 +110,12 @@ Decision policy:
 - recommended_action="accept" when it is already good enough as an ICL demonstration.
 - is_valid_demo should indicate whether this image can be kept as a usable demonstration at all.
 - is_good_enough should be true only when no further editing is needed.
+{original_alignment_policy}
 """.strip()
-        images = [img for img in (history_images or []) if img is not None]
+        images = []
+        if verify_against_original and original_image is not None:
+            images.append(original_image)
+        images.extend([img for img in (history_images or []) if img is not None])
         images.append(synthetic_image)
         if len(images) >= 2:
             raw = self.backbone.generate_response_multimodal_multi(images, prompt)
